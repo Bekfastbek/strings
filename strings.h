@@ -12,13 +12,13 @@
 // TODO: Add a +=, -= and == operator overload
 // TODO: iostream operator support
 // TODO: C interop with functions to export it as a C string
+// TODO: Support big endian for bitwise ops
 // TODO: Documentation and making sure to do that and not be lazy
 
 
 namespace strings {
-    // Immutable string type (I am following the Rust string types which I guess is std::string_view)
-    template<typename T = std::uint64_t> // 64 bit since reducing size does nothing in this instance considering str_ is
-    // 8 byte pointer so size will get padded to 8 byte anyways but free will or whatever
+    // Immutable string type (functionally same as &str from Rust and std::string_view from libg++)
+    template<typename T = std::uint64_t>
     class str {
         const char *str_;
         T size_;
@@ -257,6 +257,14 @@ namespace strings {
         }
 
         // Move assign constructor
+        /* TODO: Figured out that this takes over copy constructor which is usually fine but when you are
+            pre-allocating a capacity upfront, it overrides with other's capacity
+            For example:
+            strings::string<> str1(64);
+            str1 = str2 + str3;
+            where str1 copies capacity of str2 + str3 instead of just using str1 capacity
+            which causes issue where user wanted the capacity to be preserved but the move constructor overrides it
+        */
         string &operator=(string &&other) noexcept {
             if (this == &other) {
                 return *this;
