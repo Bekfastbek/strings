@@ -8,5 +8,7 @@ int main() {
     str1.print();
     std::cout << "Size: " << str1.size() << '\n';
     std::cout << "Capacity: " << str1.capacity() << '\n';
+    std::cout << "Struct size: " << sizeof(strings::string<>) << '\n';
+    std::cout << "Struct size (64 bits): " << sizeof(strings::string<std::uint64_t>) << '\n';
     return 0;
 }

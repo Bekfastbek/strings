@@ -5,12 +5,20 @@
 #include <iostream>
 
 
-#define SIZE_SSO (sizeof(T) + sizeof(T) + sizeof(const char*))
+// TODO: Need to implement case where doing str64 = str32 + str64 or str32 + str32 is allowed
+// TODO: Add a resize function
+// TODO: Add a split function
+// TODO: Add a reduce operator where it can do str1 - int to reduce the string size of str1
+// TODO: Add a += and -= operator overload
+// TODO: C interop with functions to export it as a C string
+// TODO: Add move and move assign for the rule of 5
+// TODO: Documentation and making sure to do that and not be lazy
 
 
 namespace strings {
-    // Immutable string type (I am following the Rust string types)
-    template<typename T = std::uint64_t>
+    // Immutable string type (I am following the Rust string types which I guess is std::string_view)
+    template<typename T = std::uint64_t> // 64 bit since reducing size does nothing in this instance considering str_ is
+                                   // 8 byte pointer so size will get padded to 8 byte anyways but free will or whatever
     class str {
         const char *str_;
         T size_;
@@ -40,12 +48,14 @@ namespace strings {
 #endif
 
     // Mutable string type
-    template<typename T = std::uint32_t>
+    template<typename T = std::uint32_t> // In this instance the struct size becomes 16 bytes instead of 24 but user can
+                              // increase the size to 64 bit if needed but in 99% of cases the higher width isn't needed
     class string {
+        static constexpr T SIZE_SSO = sizeof(T) + sizeof(T) + sizeof(char*);
         union {
             struct {
                 char *string;
-                T capacity; // its size * 2 + 1
+                T capacity; // its size * 2 + 1 unless user presizes during init or does a manual resize
                 T size; // size should never reach the last bit so a flag at the last bit should be safe
             } string_;
 
@@ -55,6 +65,8 @@ namespace strings {
             } string_small;
         };
 
+        // This basically copies the last byte which lets assume is the 16th byte (so 15 index) and checks its MSB value
+        // This part is self reference: 00000000 & 10000000 (0x80) = false 10000000 & 10000000 = true
         [[nodiscard]] bool is_short() const {
             std::uint8_t byte;
             std::memcpy(&byte, reinterpret_cast<const char *>(this) + (SIZE_SSO - 1), 1);
@@ -78,15 +90,16 @@ namespace strings {
             string_small.size = 0x80;
         }
 
-        // If user passes an integer in parenthesis, it will force a heap allocation so prevent SSO in case they know that buffer will become heap allocated later on
-        explicit string(T bytes) {
-            string_.string = new char[bytes];
+        // If user passes an integer in parenthesis, it will force a heap allocation so prevent SSO
+        // in case they know that buffer will become heap allocated later on
+        explicit string(std::uint64_t bytes) {
+            string_.string = new char[bytes]; // I don't think anyone is stupid enough to allocate 0
             string_.string[0] = '\0';
             string_.size = 0;
             string_.capacity = bytes;
         }
 
-        // Converts string literal to struct
+        // Assigns string literal to struct
         string(const char *s) {
             T len = std::strlen(s);
             if (len < sizeof(string_small.string)) {
@@ -223,13 +236,13 @@ namespace strings {
             T len2 = strlen(second);
             T total_len = len1 + len2;
             if (total_len < SIZE_SSO - 1) {
-                std::memcpy(res.string_small.string, src1, len1);
-                std::memcpy(res.string_small.string + len1, second, len2 + 1);
+                std::memcpy(res.string_small.string, second, len2);
+                std::memcpy(res.string_small.string + len2, src1, len1 + 1);
                 res.string_small.size = total_len | 0x80;
             } else {
                 res.string_.string = new char[total_len * 2 + 1];
-                std::memcpy(res.string_.string, src1, len1);
-                std::memcpy(res.string_.string + len1, second, len2 + 1);
+                std::memcpy(res.string_.string, second, len2);
+                std::memcpy(res.string_.string + len2, src1, len1 + 1);
                 res.string_.size = total_len;
                 res.string_.capacity = total_len * 2 + 1;
             }
