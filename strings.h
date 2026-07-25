@@ -9,9 +9,8 @@
 // TODO: Add a resize function
 // TODO: Add a split function
 // TODO: Add a reduce operator where it can do str1 - int to reduce the string size of str1
-// TODO: Add a += and -= operator overload
+// TODO: Add a +=, -= and == operator overload
 // TODO: C interop with functions to export it as a C string
-// TODO: Add move and move assign for the rule of 5
 // TODO: Documentation and making sure to do that and not be lazy
 
 
@@ -247,6 +246,66 @@ namespace strings {
                 res.string_.capacity = total_len * 2 + 1;
             }
             return res;
+        }
+
+        // Move constructor
+        string(string&& other) noexcept {
+            if (other.is_short()) {
+                std::memcpy(string_small.string, other.string_small.string, (other.string_small.size & 0x7F) + 1);
+                string_small.size = other.string_small.size;
+                other.string_small.string[0] = '\0';
+                other.string_small.size = 0x80;
+            } else {
+                string_.string = other.string_.string;
+                string_.size = other.string_.size;
+                string_.capacity = other.string_.capacity;
+                other.string_.string = nullptr;
+                other.string_.size = 0;
+                other.string_.capacity = 0;
+            }
+        }
+
+        // Move assign constructor
+        string& operator=(string&& other) noexcept {
+            if (this == &other) {
+                return *this;
+            }
+            if (other.is_short()) {
+                if (is_short()) {
+                    std::memcpy(string_small.string, other.string_small.string, (other.string_small.size & 0x7F) + 1);
+                    string_small.size = other.string_small.size;
+                    other.string_small.string[0] = '\0';
+                    other.string_small.size = 0x80;
+                } else {
+                    // Hopefully I am correct and I am assuming that the heap allocated string does not need capacity adjustment
+                    delete[] string_.string;
+                    std::memcpy(string_small.string, other.string_small.string, (other.string_small.size & 0x7F) + 1);
+                    string_small.size = (other.string_small.size & 0x7F) | 0x80;
+                    other.string_small.string[0] = '\0';
+                    other.string_small.size = 0x80;
+                }
+            } else {
+                if (is_short()) {
+                    // So this SHOULD clear SSO state and just move to heap state
+                    string_small.string[0] = '\0';
+                    string_small.size = 0;
+                    string_.string = other.string_.string;
+                    string_.size = other.string_.size;
+                    string_.capacity = other.string_.capacity;
+                    other.string_.string = nullptr;
+                    other.string_.size = 0;
+                    other.string_.capacity = 0;
+                } else {
+                    delete[] string_.string;
+                    string_.string = other.string_.string;
+                    string_.size = other.string_.size;
+                    string_.capacity = other.string_.capacity;
+                    other.string_.string = nullptr;
+                    other.string_.size = 0;
+                    other.string_.capacity = 0;
+                }
+            }
+            return *this;
         }
 
         // temp for debug
