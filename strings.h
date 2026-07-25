@@ -10,6 +10,7 @@
 // TODO: Add a split function
 // TODO: Add a reduce operator where it can do str1 - int to reduce the string size of str1
 // TODO: Add a +=, -= and == operator overload
+// TODO: iostream operator support
 // TODO: C interop with functions to export it as a C string
 // TODO: Documentation and making sure to do that and not be lazy
 
@@ -17,25 +18,30 @@
 namespace strings {
     // Immutable string type (I am following the Rust string types which I guess is std::string_view)
     template<typename T = std::uint64_t> // 64 bit since reducing size does nothing in this instance considering str_ is
-                                   // 8 byte pointer so size will get padded to 8 byte anyways but free will or whatever
+    // 8 byte pointer so size will get padded to 8 byte anyways but free will or whatever
     class str {
         const char *str_;
         T size_;
+
     public:
-        str(const char* s) {
+        str(const char *s) {
             str_ = s;
             size_ = std::strlen(s);
         }
-        str(const char* s, T size) noexcept {
+
+        str(const char *s, T size) noexcept {
             str_ = s;
             size_ = size;
         }
+
         constexpr str sub_str(T start, T count) const noexcept {
             return str(str_ + start, count);
         }
-        [[nodiscard]] constexpr const char* data() const noexcept {
+
+        [[nodiscard]] constexpr const char *data() const noexcept {
             return str_;
         }
+
         constexpr T size() const noexcept {
             return size_;
         }
@@ -48,9 +54,10 @@ namespace strings {
 
     // Mutable string type
     template<typename T = std::uint32_t> // In this instance the struct size becomes 16 bytes instead of 24 but user can
-                              // increase the size to 64 bit if needed but in 99% of cases the higher width isn't needed
+    // increase the size to 64 bit if needed but in 99% of cases the higher width isn't needed
     class string {
-        static constexpr T SIZE_SSO = sizeof(T) + sizeof(T) + sizeof(char*);
+        static constexpr T SIZE_SSO = sizeof(T) + sizeof(T) + sizeof(char *);
+
         union {
             struct {
                 char *string;
@@ -73,7 +80,7 @@ namespace strings {
         }
 
         // I will probably thank myself since it reduces a lot of boilerplate
-        static void get_len_and_data(const string& object, T& len, const char*& data) {
+        static void get_len_and_data(const string &object, T &len, const char *&data) {
             if (object.is_short()) {
                 data = object.string_small.string;
                 len = object.string_small.size & 0x7F;
@@ -84,7 +91,6 @@ namespace strings {
         }
 
     public:
-
         string() : string_small{} {
             string_small.size = 0x80;
         }
@@ -112,7 +118,8 @@ namespace strings {
             }
         }
 
-        // Copy constructor, learned about it today but it copies the struct to the constructor so if i am correct it triggers when strings::string string2 = string1;
+        // Copy constructor, learned about it today but it copies the struct to the constructor so if i am correct
+        // it triggers when strings::string string2 = string1;
         string(const string &other) {
             const char *src;
             T len;
@@ -128,7 +135,8 @@ namespace strings {
             }
         }
 
-        // Copy assignment constructor, if this is already initialized then it will get overridden i.e. string2 = string1 where string2 already holds a value
+        // Copy assignment constructor, if this is already initialized then it will get overridden i.e.
+        // string2 = string1 where string2 already holds a value
         string &operator=(string const &second) {
             if (this == &second) {
                 return *this;
@@ -159,23 +167,6 @@ namespace strings {
         ~string() {
             if (!is_short()) {
                 delete[] string_.string;
-            }
-        }
-
-        T size() const {
-            if (is_short()) {
-                return string_small.size & 0x7F;
-            } else {
-                return string_.size;
-            }
-        }
-
-        // Temporarily added it to just check if an object is SSO or not but I need to flesh it out later
-        T capacity() const {
-            if (is_short()) {
-                return 0;
-            } else {
-                return string_.capacity;
             }
         }
 
@@ -249,7 +240,7 @@ namespace strings {
         }
 
         // Move constructor
-        string(string&& other) noexcept {
+        string(string &&other) noexcept {
             if (other.is_short()) {
                 std::memcpy(string_small.string, other.string_small.string, (other.string_small.size & 0x7F) + 1);
                 string_small.size = other.string_small.size;
@@ -266,7 +257,7 @@ namespace strings {
         }
 
         // Move assign constructor
-        string& operator=(string&& other) noexcept {
+        string &operator=(string &&other) noexcept {
             if (this == &other) {
                 return *this;
             }
@@ -308,6 +299,23 @@ namespace strings {
             return *this;
         }
 
+        T size() const {
+            if (is_short()) {
+                return string_small.size & 0x7F;
+            } else {
+                return string_.size;
+            }
+        }
+
+        // Temporarily added it to just check if an object is SSO or not but I need to flesh it out later
+        T capacity() const {
+            if (is_short()) {
+                return 0;
+            } else {
+                return string_.capacity;
+            }
+        }
+
         // temp for debug
         void print() const {
             if (is_short()) {
@@ -315,6 +323,21 @@ namespace strings {
             } else {
                 std::cout << string_.string << '\n';
             }
+        }
+
+        // TODO: Need to check for bytes < len
+        void resize(std::uint64_t bytes) {
+            T len;
+            const char *src;
+            get_len_and_data(*this, len, src);
+            char *buf = new char[bytes];
+            std::memcpy(buf, src, len + 1);
+            if (!is_short()) {
+                delete[] string_.string;
+            }
+            string_.string = buf;
+            string_.size = len;
+            string_.capacity = bytes;
         }
     };
 #if _MSVC_LANG >= 201703L
