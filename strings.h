@@ -3,60 +3,29 @@
 #include <cstdint>
 #include <cstring>
 #include <iostream>
+#include <ostream>
 
 
 // TODO: Need to implement case where doing str64 = str32 + str64 or str32 + str32 is allowed
-// TODO: Add a resize function
 // TODO: Add a split function
 // TODO: Add a reduce operator where it can do str1 - int to reduce the string size of str1
 // TODO: Add a +=, -= and == operator overload
 // TODO: iostream operator support
 // TODO: C interop with functions to export it as a C string
 // TODO: Support big endian for bitwise ops
+// TODO: Custom allocator support where I can just expose a function pointer and do something like alloc(n) instead of new char[n] and the caller can modify what alloc can do
+// TODO: UTF8
+// TODO: Vectorize some parts of the codebase
 // TODO: Documentation and making sure to do that and not be lazy
 
 
 namespace strings {
-    // Immutable string type (functionally same as &str from Rust and std::string_view from libg++)
-    template<typename T = std::uint64_t>
-    class str {
-        const char *str_;
-        T size_;
-
-    public:
-        str(const char *s) {
-            str_ = s;
-            size_ = std::strlen(s);
-        }
-
-        str(const char *s, T size) noexcept {
-            str_ = s;
-            size_ = size;
-        }
-
-        constexpr str sub_str(T start, T count) const noexcept {
-            return str(str_ + start, count);
-        }
-
-        [[nodiscard]] constexpr const char *data() const noexcept {
-            return str_;
-        }
-
-        constexpr T size() const noexcept {
-            return size_;
-        }
-    };
-#if _MSVC_LANG >= 201703L
-    str(const char *) -> str<std::uint64_t>;
-#elif __cplusplus >= 201703L
-    str(const char *) -> str<std::uint64_t>;
-#endif
-
     // Mutable string type
     template<typename T = std::uint32_t> // In this instance the struct size becomes 16 bytes instead of 24 but user can
     // increase the size to 64 bit if needed but in 99% of cases the higher width isn't needed
     class string {
         static constexpr T SIZE_SSO = sizeof(T) + sizeof(T) + sizeof(char *);
+        static constexpr T SIZE_T_MAX = ~(T(1) << (sizeof(T) * 8 - 1));
 
         union {
             struct {
@@ -89,6 +58,9 @@ namespace strings {
                 len = object.string_.size;
             }
         }
+
+        template<typename U>
+        friend class str;
 
     public:
         string() : string_small{} {
@@ -257,32 +229,26 @@ namespace strings {
         }
 
         // Move assign constructor
-        /* TODO: Figured out that this takes over copy constructor which is usually fine but when you are
-            pre-allocating a capacity upfront, it overrides with other's capacity
-            For example:
-            strings::string<> str1(64);
-            str1 = str2 + str3;
-            where str1 copies capacity of str2 + str3 instead of just using str1 capacity
-            which causes issue where user wanted the capacity to be preserved but the move constructor overrides it
-        */
         string &operator=(string &&other) noexcept {
             if (this == &other) {
                 return *this;
             }
             if (other.is_short()) {
-                if (is_short()) {
-                    std::memcpy(string_small.string, other.string_small.string, (other.string_small.size & 0x7F) + 1);
-                    string_small.size = other.string_small.size;
-                    other.string_small.string[0] = '\0';
-                    other.string_small.size = 0x80;
+                T len = other.string_small.size & 0x7F;
+                const char *src = other.string_small.string;
+                // If a user pre-allocates capacity, it will respect that instead of converting back to SSO
+                if (!is_short() && string_.capacity > len) {
+                    std::memcpy(string_.string, src, len + 1);
+                    string_.size = len;
                 } else {
-                    // Hopefully I am correct and I am assuming that the heap allocated string does not need capacity adjustment
-                    delete[] string_.string;
-                    std::memcpy(string_small.string, other.string_small.string, (other.string_small.size & 0x7F) + 1);
-                    string_small.size = (other.string_small.size & 0x7F) | 0x80;
-                    other.string_small.string[0] = '\0';
-                    other.string_small.size = 0x80;
+                    if (!is_short()) {
+                        delete[] string_.string;
+                    }
+                    std::memcpy(string_small.string, src, len + 1);
+                    string_small.size = len | 0x80;
                 }
+                other.string_small.string[0] = '\0';
+                other.string_small.size = 0x80;
             } else {
                 if (is_short()) {
                     // So this SHOULD clear SSO state and just move to heap state
@@ -307,7 +273,7 @@ namespace strings {
             return *this;
         }
 
-        T size() const {
+        [[nodiscard]] T size() const {
             if (is_short()) {
                 return string_small.size & 0x7F;
             } else {
@@ -316,7 +282,7 @@ namespace strings {
         }
 
         // Temporarily added it to just check if an object is SSO or not but I need to flesh it out later
-        T capacity() const {
+        [[nodiscard]] T capacity() const {
             if (is_short()) {
                 return 0;
             } else {
@@ -333,25 +299,156 @@ namespace strings {
             }
         }
 
-        // TODO: Need to check for bytes < len
-        void resize(std::uint64_t bytes) {
+        void reserve(std::uint64_t bytes) {
             T len;
             const char *src;
             get_len_and_data(*this, len, src);
-            char *buf = new char[bytes];
-            std::memcpy(buf, src, len + 1);
-            if (!is_short()) {
-                delete[] string_.string;
+            if (bytes < len) {
+                std::cerr << "strings::string: requested capacity " << bytes << " is smaller than current size " << len
+                        << '\n';
+                std::abort();
             }
-            string_.string = buf;
-            string_.size = len;
-            string_.capacity = bytes;
+            if (bytes > SIZE_T_MAX) {
+                std::cerr << "strings::string: requested capacity " << bytes << " exceeds maximum allowed size (" <<
+                        SIZE_T_MAX << ")\n";
+                std::abort();
+            }
+            T current_capacity;
+            if (is_short()) {
+                current_capacity = sizeof(string_small.string);
+            } else {
+                current_capacity = string_.capacity;
+            }
+            if (bytes == current_capacity) {
+                return;
+            }
+            if (bytes < sizeof(string_small.string)) {
+                char temp[sizeof(string_small.string)];
+                std::memcpy(temp, src, len + 1);
+                if (!is_short()) {
+                    delete[] string_.string;
+                }
+                std::memcpy(string_small.string, temp, len + 1);
+                string_small.size = len | 0x80;
+            } else {
+                char *buf = new char[bytes];
+                std::memcpy(buf, src, len + 1);
+                if (!is_short()) {
+                    delete[] string_.string;
+                }
+                string_.string = buf;
+                string_.size = len;
+                string_.capacity = bytes;
+            }
         }
     };
 #if _MSVC_LANG >= 201703L
     string(const char *) -> string<std::uint32_t>;
 #elif __cplusplus >= 201703L
     string(const char *) -> string<std::uint32_t>;
+#endif
+
+    // Immutable string type (functionally same as &str from Rust and std::string_view from libg++)
+    template<typename T = std::uint64_t>
+    class str {
+        const char *str_;
+        T size_;
+
+        int compare(const str &other) const noexcept {
+            T min_len;
+            if (size_ < other.size_) {
+                min_len = size_;
+            } else {
+                min_len = other.size_;
+            }
+            const int cmp = std::memcmp(str_, other.str_, min_len);
+            if (cmp != 0) {
+                return cmp;
+            }
+            if (size_ < other.size_) {
+                return -1;
+            }
+            if (size_ > other.size_) {
+                return 1;
+            }
+            return 0;
+        }
+
+    public:
+        str() {
+            str_ = nullptr;
+            size_ = 0;
+        }
+
+        str(const char *s) {
+            str_ = s;
+            size_ = std::strlen(s);
+        }
+
+        str(const string<> &s) noexcept {
+            // Can't use get_len_and_data() because of template datatype mismatch :(
+            if (s.is_short()) {
+                str_ = s.string_small.string;
+                size_ = s.string_small.size & 0x7F;
+            } else {
+                str_ = s.string_.string;
+                size_ = s.string_.size;
+            }
+        }
+
+        [[nodiscard]] constexpr const char *data() const noexcept {
+            return str_;
+        }
+
+        constexpr T size() const noexcept {
+            return size_;
+        }
+
+        friend std::ostream &operator<<(std::ostream &out, const str &s) {
+            out.write(s.str_, s.size_);
+            return out;
+        }
+
+        bool operator==(const str &other) const noexcept {
+            return size_ == other.size_ && std::memcmp(str_, other.str_, size_) == 0;
+        }
+
+        bool operator!=(const str &other) const noexcept {
+            return !(*this == other);
+        }
+
+        bool operator<(const str &other) const noexcept {
+            return compare(other) < 0;
+        }
+
+        bool operator>(const str &other) const noexcept {
+            return compare(other) > 0;
+        }
+
+        bool operator<=(const str &other) const noexcept {
+            return compare(other) <= 0;
+        }
+
+        bool operator>=(const str &other) const noexcept {
+            return compare(other) >= 0;
+        }
+
+        constexpr const char* operator[](T index) const noexcept {
+            return *(str_ + index);
+        }
+
+        [[nodiscard]] constexpr const char* begin() const noexcept {
+            return str_;
+        }
+
+        [[nodiscard]] constexpr const char* end() const noexcept {
+            return str_ + size_;
+        }
+    };
+#if _MSVC_LANG >= 201703L
+    str(const char *) -> str<std::uint64_t>;
+#elif __cplusplus >= 201703L
+    str(const char *) -> str<std::uint64_t>;
 #endif
 }
 
