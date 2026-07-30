@@ -4,17 +4,14 @@
 #include <cstring>
 #include <iostream>
 #include <ostream>
+#include <istream>
 
 
 // TODO: Need to implement case where doing str64 = str32 + str64 or str32 + str32 is allowed
 // TODO: Add a split function
 // TODO: Add a reduce operator where it can do str1 - int to reduce the string size of str1
 // TODO: Add a +=, -= and == operator overload
-// TODO: iostream operator support
-// TODO: C interop with functions to export it as a C string
-// TODO: Support big endian for bitwise ops
 // TODO: Custom allocator support where I can just expose a function pointer and do something like alloc(n) instead of new char[n] and the caller can modify what alloc can do
-// TODO: UTF8
 // TODO: Vectorize some parts of the codebase
 // TODO: Documentation and making sure to do that and not be lazy
 
@@ -56,6 +53,23 @@ namespace strings {
             } else {
                 data = object.string_.string;
                 len = object.string_.size;
+            }
+        }
+
+        static void realloc(string& s1, T capacity) {
+            if (s1.is_short()) {
+                std::uint8_t len = s1.string_small.size & 0x7F;
+                char* temp = new char[capacity + 1];
+                std::memcpy(temp, s1.string_small.string, len + 1);
+                s1.string_.string = temp;
+                s1.string_.size = len;
+                s1.string_.capacity = capacity;
+            } else {
+                char* temp = new char[capacity + 1];
+                std::memcpy(temp, s1.string_.string, s1.string_.size + 1);
+                delete[] s1.string_.string;
+                s1.string_.string = temp;
+                s1.string_.capacity = capacity;
             }
         }
 
@@ -282,7 +296,7 @@ namespace strings {
         }
 
         // Temporarily added it to just check if an object is SSO or not but I need to flesh it out later
-        [[nodiscard]] T capacity() const {
+        [[nodiscard]] T capacity() const noexcept {
             if (is_short()) {
                 return 0;
             } else {
@@ -290,12 +304,11 @@ namespace strings {
             }
         }
 
-        // temp for debug
-        void print() const {
+        [[nodiscard]] const char* data() const noexcept {
             if (is_short()) {
-                std::cout << string_small.string << '\n';
+                return string_small.string;
             } else {
-                std::cout << string_.string << '\n';
+                return string_.string;
             }
         }
 
@@ -341,6 +354,71 @@ namespace strings {
                 string_.capacity = bytes;
             }
         }
+
+        friend std::ostream &operator<<(std::ostream &out, string &s) {
+            if (s.is_short()) {
+                out.write(s.string_small.string, (s.string_small.size & 0x7F));
+            } else {
+                out.write(s.string_.string, s.string_.size);
+            }
+            return out;
+        }
+
+        friend std::istream &operator>>(std::istream &in, string &s) {
+            if (s.is_short()) {
+                s.string_small.string[0] = '\0';
+                s.string_small.size = 0x80;
+            } else {
+                // This should be fine since we never read past size so even if there is anything past the null terminator, it won't be read
+                s.string_.string[0] = '\0';
+                s.string_.size = 0;
+            }
+            char temp;
+            while (in.get(temp) && std::isspace(temp)) {
+            }
+            if (!in) {
+                return in;
+            }
+            do {
+                if (std::isspace(temp)) {
+                    in.unget();
+                    break;
+                }
+                if (s.is_short()) {
+                    uint8_t sso_len = s.string_small.size & 0x7F;
+                    if ((sso_len) == (SIZE_SSO - 1)) {
+                        realloc(s, sso_len * 2);
+                        s.string_.string[s.string_.size++] = temp;
+                    } else {
+                        s.string_small.string[sso_len++] = temp;
+                        ++s.string_small.size;
+                    }
+                } else {
+                    if ((s.string_.size * 4) >= (s.string_.capacity * 3)) {
+                        realloc(s, s.string_.capacity * 2);
+                    }
+                    s.string_.string[s.string_.size++] = temp;
+                }
+            } while (in.get(temp));
+            if (s.is_short()) {
+                s.string_small.string[s.string_small.size & 0x7F] = '\0';
+            } else {
+                s.string_.string[s.string_.size] = '\0';
+            }
+            return in;
+        }
+
+        void force_dealloc() {
+            if (is_short()) {
+                string_small.string[0] = '\0';
+                string_small.size = 0x80;
+            } else {
+                delete[] string_.string;
+                string_.string = nullptr;
+                string_.capacity = 0;
+                string_.size = 0x80;
+            }
+        }
     };
 #if _MSVC_LANG >= 201703L
     string(const char *) -> string<std::uint32_t>;
@@ -354,7 +432,7 @@ namespace strings {
         const char *str_;
         T size_;
 
-        int compare(const str &other) const noexcept {
+        std::int64_t compare(const str &other) const noexcept {
             T min_len;
             if (size_ < other.size_) {
                 min_len = size_;
