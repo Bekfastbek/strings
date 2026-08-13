@@ -1,8 +1,10 @@
 #include "strings.h"
+#include <string>
 #include <iostream>
 
 int main() {
     strings::string<> str1(64);
+    std::string strings;
     const strings::string<> str2 = "Morning";
     str1 = str2 + " World";
     std::cout << str1 << std::endl;

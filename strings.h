@@ -9,10 +9,10 @@
 
 // TODO: Need to implement case where doing str64 = str32 + str64 or str32 + str32 is allowed
 // TODO: Add a split function
-// TODO: Add a reduce operator where it can do str1 - int to reduce the string size of str1
-// TODO: Add a +=, -= and == operator overload
-// TODO: Custom allocator support where I can just expose a function pointer and do something like alloc(n) instead of new char[n] and the caller can modify what alloc can do
+// TODO: Add substrings and find functions
+// TODO: Fix str to string comparison
 // TODO: Vectorize some parts of the codebase
+// TODO: UTF-8, UTF-16, UTF-32
 // TODO: Documentation and making sure to do that and not be lazy
 
 
@@ -21,7 +21,7 @@ namespace strings {
     template<typename T = std::uint32_t> // In this instance the struct size becomes 16 bytes instead of 24 but user can
     // increase the size to 64 bit if needed but in 99% of cases the higher width isn't needed
     class string {
-        static constexpr T SIZE_SSO = sizeof(T) + sizeof(T) + sizeof(char *);
+        static constexpr T SIZE_SSO = sizeof(T) + sizeof(T) + sizeof(char*);
         static constexpr T SIZE_T_MAX = ~(T(1) << (sizeof(T) * 8 - 1));
 
         union {
@@ -71,6 +71,31 @@ namespace strings {
                 s1.string_.string = temp;
                 s1.string_.capacity = capacity;
             }
+        }
+
+        [[nodiscard]] std::int64_t compare(const string &other) const noexcept {
+            T min_len;
+            T len1, len2;
+            char* str1;
+            char* str2;
+            get_len_and_data(this, len1, str1);
+            get_len_and_data(other, len2, str2);
+            if (len1 < len2) {
+                min_len = len1;
+            } else {
+                min_len = len2;
+            }
+            const int cmp = std::memcmp(str1, str2, min_len);
+            if (cmp != 0) {
+                return cmp;
+            }
+            if (len1 < len2) {
+                return -1;
+            }
+            if (len1 > len2) {
+                return 1;
+            }
+            return 0;
         }
 
         template<typename U>
@@ -181,6 +206,29 @@ namespace strings {
             return res;
         }
 
+        string operator+=(const string &second) {
+            T len1;
+            T len2;
+            const char *src1;
+            const char *src2;
+            get_len_and_data(*this, len1, src1);
+            get_len_and_data(second, len2, src2);
+            T total_len = len1 + len2;
+
+            if (total_len < SIZE_SSO - 1) {
+                std::memcpy(string_small.string, src1, len1);
+                std::memcpy(string_small.string + len1, src2, len2 + 1);
+                string_small.size = total_len | 0x80;
+            } else {
+                string_.string = new char[total_len * 2 + 1];
+                std::memcpy(string_.string, src1, len1);
+                std::memcpy(string_.string + len1, src2, len2 + 1);
+                string_.size = total_len;
+                string_.capacity = total_len * 2 + 1;
+            }
+            return *this;
+        }
+
         // Case where arg1 is struct and arg2 is string literal
         friend string operator+(const string &first, const char *second) {
             string res;
@@ -201,6 +249,26 @@ namespace strings {
                 res.string_.capacity = total_len * 2 + 1;
             }
             return res;
+        }
+
+        string operator+=(const char* second) {
+            T len1;
+            const char *src1;
+            get_len_and_data(*this, len1, src1);
+            T len2 = strlen(second);
+            T total_len = len1 + len2;
+            if (total_len < SIZE_SSO - 1) {
+                std::memcpy(string_small.string, src1, len1);
+                std::memcpy(string_small.string + len1, second, len2 + 1);
+                string_small.size = total_len | 0x80;
+            } else {
+                string_.string = new char[total_len * 2 + 1];
+                std::memcpy(string_.string, src1, len1);
+                std::memcpy(string_.string + len1, second, len2 + 1);
+                string_.size = total_len;
+                string_.capacity = total_len * 2 + 1;
+            }
+            return *this;
         }
 
         // Case where arg1 is string literal and arg2 is struct
@@ -355,7 +423,7 @@ namespace strings {
             }
         }
 
-        friend std::ostream &operator<<(std::ostream &out, string &s) {
+        friend std::ostream &operator<<(std::ostream &out, const string &s) {
             if (s.is_short()) {
                 out.write(s.string_small.string, (s.string_small.size & 0x7F));
             } else {
@@ -386,7 +454,7 @@ namespace strings {
                 }
                 if (s.is_short()) {
                     uint8_t sso_len = s.string_small.size & 0x7F;
-                    if ((sso_len) == (SIZE_SSO - 1)) {
+                    if ((sso_len) == (SIZE_SSO - 2)) {
                         realloc(s, sso_len * 2);
                         s.string_.string[s.string_.size++] = temp;
                     } else {
@@ -408,6 +476,59 @@ namespace strings {
             return in;
         }
 
+        bool operator==(const string &other) const noexcept {
+            T len1, len2;
+            char* str1;
+            char* str2;
+            get_len_and_data(this, len1, str1);
+            get_len_and_data(other, len2, str2);
+            return len1 == len2 && std::memcmp(str1, str2, len1) == 0;
+        }
+
+        bool operator!=(const string &other) const noexcept {
+            return !(*this == other);
+        }
+
+        bool operator<(const string &other) const noexcept {
+            return compare(other) < 0;
+        }
+
+        bool operator>(const string &other) const noexcept {
+            return compare(other) > 0;
+        }
+
+        bool operator<=(const string &other) const noexcept {
+            return compare(other) <= 0;
+        }
+
+        bool operator>=(const string &other) const noexcept {
+            return compare(other) >= 0;
+        }
+
+        constexpr char operator[](T index) const noexcept {
+            if (is_short()) {
+                return string_small.string[index];
+            } else {
+                return *(string_.string + index);
+            }
+        }
+
+        [[nodiscard]] constexpr const char* begin() const noexcept {
+            if (is_short()) {
+                return string_small.string;
+            } else {
+                return string_.string;
+            }
+        }
+
+        [[nodiscard]] constexpr const char* end() const noexcept {
+            if (is_short()) {
+                return string_small.string + (string_small.size & 0x7F);
+            } else {
+                return string_.string + string_.size;
+            }
+        }
+
         void force_dealloc() {
             if (is_short()) {
                 string_small.string[0] = '\0';
@@ -416,9 +537,11 @@ namespace strings {
                 delete[] string_.string;
                 string_.string = nullptr;
                 string_.capacity = 0;
-                string_.size = 0x80;
+                string_small.size = 0x80;
             }
         }
+
+
     };
 #if _MSVC_LANG >= 201703L
     string(const char *) -> string<std::uint32_t>;
@@ -463,7 +586,8 @@ namespace strings {
             size_ = std::strlen(s);
         }
 
-        str(const string<> &s) noexcept {
+        template <typename U>
+        str(const string<U> &s) noexcept {
             // Can't use get_len_and_data() because of template datatype mismatch :(
             if (s.is_short()) {
                 str_ = s.string_small.string;
@@ -511,7 +635,7 @@ namespace strings {
             return compare(other) >= 0;
         }
 
-        constexpr const char* operator[](T index) const noexcept {
+        constexpr char operator[](T index) const noexcept {
             return *(str_ + index);
         }
 
