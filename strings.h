@@ -5,9 +5,9 @@
 #include <iostream>
 #include <ostream>
 #include <istream>
+#include <optional>
 
 
-// TODO: Need to implement case where doing str64 = str32 + str64 or str32 + str32 is allowed
 // TODO: Add a split function
 // TODO: Add substrings and find functions
 // TODO: Fix str to string comparison
@@ -18,16 +18,17 @@
 
 namespace strings {
     // Mutable string type
-    template<typename T = std::uint32_t> // In this instance the struct size becomes 16 bytes instead of 24 but user can
-    // increase the size to 64 bit if needed but in 99% of cases the higher width isn't needed
+    template<typename T = std::uint64_t> // In this instance the struct size becomes 24 bytes instead of 16 but user can
+    // decrease the size for performance
     class string {
         static constexpr T SIZE_SSO = sizeof(T) + sizeof(T) + sizeof(char*);
         static constexpr T SIZE_T_MAX = ~(T(1) << (sizeof(T) * 8 - 1));
+        static constexpr std::uint64_t npos = static_cast<std::size_t> (-1);
 
         union {
             struct {
                 char *string;
-                T capacity; // its size * 2 + 1 unless user presizes during init or does a manual resize
+                T capacity; // its size * 2 + 1 unless user pre-sizes during init or does a manual resize
                 T size; // size should never reach the last bit so a flag at the last bit should be safe
             } string_;
 
@@ -206,7 +207,7 @@ namespace strings {
             return res;
         }
 
-        string operator+=(const string &second) {
+        string& operator+=(const string &second) {
             T len1;
             T len2;
             const char *src1;
@@ -251,7 +252,7 @@ namespace strings {
             return res;
         }
 
-        string operator+=(const char* second) {
+        string& operator+=(const char* second) {
             T len1;
             const char *src1;
             get_len_and_data(*this, len1, src1);
@@ -377,6 +378,62 @@ namespace strings {
                 return string_small.string;
             } else {
                 return string_.string;
+            }
+        }
+        // under progress, could be very buggy and slow, vectorization could help a lot in this
+        std::uint64_t find(std::optional<string> &sub = std::nullopt, std::optional<const char*> cstr = std::nullopt,
+        std::optional<std::uint64_t> pos = std::nullopt, std::optional<std::uint64_t> index = std::nullopt) {
+            bool is_found = true;
+            if (sub) {
+                if (this->is_short()) {
+                    if (sub->is_short()) {
+
+                    } else {
+                        if (sub->size() > this->size()) {
+                            return npos;
+                        }
+
+                    }
+                } else {
+                    if (sub->is_short()) {
+                        std::size_t i = 0;
+                        while (this->string_.string[i] != nullptr) {
+                            if (this->string_.string[i] == sub->string_small.string[0]) {
+                                std::size_t j = i;
+                                while (sub->string_small.string[j] != nullptr) {
+                                    if (this->string_.string[j] != sub->string_small.string[j]) {
+                                        is_found = false;
+                                        break;
+                                    }
+                                    j++;
+                                }
+                            }
+                            i++;
+                        }
+                        if (is_found) {
+                            return i;
+                        }
+                        return npos;
+                    } else {
+                        std::size_t i = 0;
+                        while (this->string_.string[i] != nullptr) {
+                            if (this->string_.string[i] == sub->string_.string[0]) {
+                                std::size_t j = i;
+                                while (sub->string_.string[j] != nullptr) {
+                                    if (this->string_.string[j] != sub->string_.string[j]) {
+                                        is_found = false;
+                                        break;
+                                    }
+                                    j++;
+                                }
+                            }
+                        }
+                        if (is_found) {
+                            return i;
+                        }
+                        return npos;
+                    }
+                }
             }
         }
 
@@ -505,7 +562,7 @@ namespace strings {
             return compare(other) >= 0;
         }
 
-        constexpr char operator[](T index) const noexcept {
+        char operator[](T index) const noexcept {
             if (is_short()) {
                 return string_small.string[index];
             } else {
@@ -540,8 +597,6 @@ namespace strings {
                 string_small.size = 0x80;
             }
         }
-
-
     };
 #if _MSVC_LANG >= 201703L
     string(const char *) -> string<std::uint32_t>;

@@ -4,6 +4,7 @@
 
 int main() {
     strings::string<> str1(64);
+    strings::string<std::uint32_t> strl;
     std::string strings;
     const strings::string<> str2 = "Morning";
     str1 = str2 + " World";
@@ -12,8 +13,8 @@ int main() {
     const strings::str<> view1 = str1;
     std::cout << "Size: " << str1.size() << '\n';
     std::cout << "Capacity: " << str1.capacity() << '\n';
-    std::cout << "Struct size: " << sizeof(strings::string<>) << '\n';
-    std::cout << "Struct size (64 bits): " << sizeof(strings::string<std::uint64_t>) << '\n';
+    std::cout << "Struct size (32 bits): " << sizeof(strings::string<std::uint32_t>) << '\n';
+    std::cout << "Struct size (64 bits): " << sizeof(strings::string<>) << '\n';
     std::cout << "String view: " << view << '\n';
     std::cout << "String view taken from str1: " << view1 << '\n';
     if (view > view1) {
