@@ -8,11 +8,12 @@
 #include <optional>
 
 
-// TODO: Add a split function
+// TODO: Add a split function (in progress)
 // TODO: Add substrings and find functions
-// TODO: Fix str to string comparison
+// TODO: Fix str to other types of strings comparison (somewhat done, str to other types of strings is possible but idk about string to other types of strings)
 // TODO: Vectorize some parts of the codebase
 // TODO: UTF-8, UTF-16, UTF-32
+// TODO: Fix bugs duh
 // TODO: Documentation and making sure to do that and not be lazy
 
 
@@ -21,9 +22,9 @@ namespace strings {
     template<typename T = std::uint64_t> // In this instance the struct size becomes 24 bytes instead of 16 but user can
     // decrease the size for performance
     class string {
-        static constexpr T SIZE_SSO = sizeof(T) + sizeof(T) + sizeof(char*);
+        static constexpr T SIZE_SSO = sizeof(T) + sizeof(T) + sizeof(char *);
         static constexpr T SIZE_T_MAX = ~(T(1) << (sizeof(T) * 8 - 1));
-        static constexpr std::uint64_t npos = static_cast<std::size_t> (-1);
+        static constexpr std::uint64_t npos = static_cast<std::size_t>(-1);
 
         union {
             struct {
@@ -57,16 +58,16 @@ namespace strings {
             }
         }
 
-        static void realloc(string& s1, T capacity) {
+        static void realloc(string &s1, T capacity) {
             if (s1.is_short()) {
                 std::uint8_t len = s1.string_small.size & 0x7F;
-                char* temp = new char[capacity + 1];
+                char *temp = new char[capacity + 1];
                 std::memcpy(temp, s1.string_small.string, len + 1);
                 s1.string_.string = temp;
                 s1.string_.size = len;
                 s1.string_.capacity = capacity;
             } else {
-                char* temp = new char[capacity + 1];
+                char *temp = new char[capacity + 1];
                 std::memcpy(temp, s1.string_.string, s1.string_.size + 1);
                 delete[] s1.string_.string;
                 s1.string_.string = temp;
@@ -77,8 +78,8 @@ namespace strings {
         [[nodiscard]] std::int64_t compare(const string &other) const noexcept {
             T min_len;
             T len1, len2;
-            char* str1;
-            char* str2;
+            char *str1;
+            char *str2;
             get_len_and_data(this, len1, str1);
             get_len_and_data(other, len2, str2);
             if (len1 < len2) {
@@ -207,7 +208,7 @@ namespace strings {
             return res;
         }
 
-        string& operator+=(const string &second) {
+        string &operator+=(const string &second) {
             T len1;
             T len2;
             const char *src1;
@@ -252,7 +253,7 @@ namespace strings {
             return res;
         }
 
-        string& operator+=(const char* second) {
+        string &operator+=(const char *second) {
             T len1;
             const char *src1;
             get_len_and_data(*this, len1, src1);
@@ -373,26 +374,26 @@ namespace strings {
             }
         }
 
-        [[nodiscard]] const char* data() const noexcept {
+        [[nodiscard]] const char *data() const noexcept {
             if (is_short()) {
                 return string_small.string;
             } else {
                 return string_.string;
             }
         }
+
         // under progress, could be very buggy and slow, vectorization could help a lot in this
-        std::uint64_t find(std::optional<string> &sub = std::nullopt, std::optional<const char*> cstr = std::nullopt,
-        std::optional<std::uint64_t> pos = std::nullopt, std::optional<std::uint64_t> index = std::nullopt) {
+        std::uint64_t find(std::optional<string> &sub = std::nullopt, std::optional<const char *> cstr = std::nullopt,
+                           std::optional<std::uint64_t> pos = std::nullopt,
+                           std::optional<std::uint64_t> index = std::nullopt) {
             bool is_found = true;
             if (sub) {
                 if (this->is_short()) {
                     if (sub->is_short()) {
-
                     } else {
                         if (sub->size() > this->size()) {
                             return npos;
                         }
-
                     }
                 } else {
                     if (sub->is_short()) {
@@ -535,8 +536,8 @@ namespace strings {
 
         bool operator==(const string &other) const noexcept {
             T len1, len2;
-            char* str1;
-            char* str2;
+            char *str1;
+            char *str2;
             get_len_and_data(this, len1, str1);
             get_len_and_data(other, len2, str2);
             return len1 == len2 && std::memcmp(str1, str2, len1) == 0;
@@ -570,7 +571,7 @@ namespace strings {
             }
         }
 
-        [[nodiscard]] constexpr const char* begin() const noexcept {
+        [[nodiscard]] constexpr const char *begin() const noexcept {
             if (is_short()) {
                 return string_small.string;
             } else {
@@ -578,7 +579,7 @@ namespace strings {
             }
         }
 
-        [[nodiscard]] constexpr const char* end() const noexcept {
+        [[nodiscard]] constexpr const char *end() const noexcept {
             if (is_short()) {
                 return string_small.string + (string_small.size & 0x7F);
             } else {
@@ -617,7 +618,7 @@ namespace strings {
             } else {
                 min_len = other.size_;
             }
-            const int cmp = std::memcmp(str_, other.str_, min_len);
+            const std::int64_t cmp = std::memcmp(str_, other.str_, min_len);
             if (cmp != 0) {
                 return cmp;
             }
@@ -625,6 +626,66 @@ namespace strings {
                 return -1;
             }
             if (size_ > other.size_) {
+                return 1;
+            }
+            return 0;
+        }
+        
+        std::int64_t compare(const string<> &other) const noexcept {
+            T min_len;
+            if (other.is_short()) {
+                if (size_ < other.string_small.size) {
+                    min_len = size_;
+                } else {
+                    min_len = other.string_small.size;
+                }
+                const std::int64_t cmp = std::memcmp(str_, other.string_small.string, min_len);
+                if (cmp != 0) {
+                    return cmp;
+                }
+                if (size_ < other.string_small.size) {
+                    return -1;
+                }
+                if (size_ > other.string_small.size) {
+                    return 1;
+                }
+                return 0;
+            } else {
+                if (size_ < other.string_.size) {
+                    min_len = size_;
+                } else {
+                    min_len = other.string_.size;
+                }
+                const std::int64_t cmp = std::memcmp(str_, other.string_.string, min_len);
+                if (cmp != 0) {
+                    return cmp;
+                }
+                if (size_ < other.string_.size) {
+                    return -1;
+                }
+                if (size_ > other.string_.size) {
+                    return 1;
+                }
+                return 0;
+            }
+        }
+
+        std::int64_t compare(const char* other) const noexcept {
+            T min_len;
+            std::uint64_t csize = std::strlen(other);
+            if (size_ < csize) {
+                min_len = size_;
+            } else {
+                min_len = csize;
+            }
+            const std::int64_t cmp = std::memcmp(str_, other, min_len);
+            if (cmp != 0) {
+                return cmp;
+            }
+            if (size_ < csize) {
+                return -1;
+            }
+            if (size_ > csize) {
                 return 1;
             }
             return 0;
@@ -641,7 +702,7 @@ namespace strings {
             size_ = std::strlen(s);
         }
 
-        template <typename U>
+        template<typename U>
         str(const string<U> &s) noexcept {
             // Can't use get_len_and_data() because of template datatype mismatch :(
             if (s.is_short()) {
@@ -690,15 +751,67 @@ namespace strings {
             return compare(other) >= 0;
         }
 
+        bool operator==(const string<> &other) const noexcept {
+            if (other.is_short()) {
+                return size_ == (other.string_small.size & 0x7F) && std::memcmp(str_, other.string_small.string, size_) == 0;
+            } else {
+                return size_ == other.string_.size && std::memcmp(str_, other.string_.string, size_) == 0;
+            }
+        }
+
+        bool operator!=(const string<> &other) const noexcept {
+            return !(*this == other);
+        }
+
+        bool operator<(const string<> &other) const noexcept {
+            return compare(other) < 0;
+        }
+
+        bool operator>(const string<> &other) const noexcept {
+            return compare(other) > 0;
+        }
+
+        bool operator<=(const string<> &other) const noexcept {
+            return compare(other) <= 0;
+        }
+
+        bool operator>=(const string<> &other) const noexcept {
+            return compare(other) >= 0;
+        }
+
+        bool operator==(const char* other) const noexcept {
+            return size_ == std::strlen(other) && std::memcmp(str_, other, size_) == 0;
+        }
+
+        bool operator!=(const char* other) const noexcept {
+            return !(*this == other);
+        }
+
+        bool operator<(const char* other) const noexcept {
+            return compare(other) < 0;
+        }
+
+        bool operator>(const char* other) const noexcept {
+            return compare(other) > 0;
+        }
+
+        bool operator<=(const char* other) const noexcept {
+            return compare(other) <= 0;
+        }
+
+        bool operator>=(const char* other) const noexcept {
+            return compare(other) >= 0;
+        }
+
         constexpr char operator[](T index) const noexcept {
             return *(str_ + index);
         }
 
-        [[nodiscard]] constexpr const char* begin() const noexcept {
+        [[nodiscard]] constexpr const char *begin() const noexcept {
             return str_;
         }
 
-        [[nodiscard]] constexpr const char* end() const noexcept {
+        [[nodiscard]] constexpr const char *end() const noexcept {
             return str_ + size_;
         }
     };

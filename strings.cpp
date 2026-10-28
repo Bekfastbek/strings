@@ -1,5 +1,4 @@
 #include "strings.h"
-#include <string>
 #include <iostream>
 
 int main() {
@@ -10,6 +9,7 @@ int main() {
     str1 = str2 + " World";
     std::cout << str1 << std::endl;
     const strings::str<> view = "Morning";
+    strings::string str6(str1);
     const strings::str<> view1 = str1;
     std::cout << "Size: " << str1.size() << '\n';
     std::cout << "Capacity: " << str1.capacity() << '\n';
@@ -22,6 +22,20 @@ int main() {
     } else if (view < view1) {
         std::cout << view1 << " is greater\n";
     } else if (view == view1) {
+        std::cout << "Both are equal\n";
+    }
+    if (view > str1) {
+        std::cout << view << "is greater\n";
+    } else if (view < str1) {
+        std::cout << str1 << " is greater\n";
+    } else if (view == str1) {
+        std::cout << "Both are equal\n";
+    }
+    if (view > "Guten") {
+        std::cout << view << " is greater\n";
+    } else if (view < "Guten") {
+        std::cout << "Guten is greater\n";
+    } else if (view == "Guten") {
         std::cout << "Both are equal\n";
     }
     return 0;
