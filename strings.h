@@ -8,16 +8,18 @@
 #include <optional>
 
 
-// TODO: Add a split function (in progress)
-// TODO: Add substrings and find functions
-// TODO: Fix str to other types of strings comparison (somewhat done, str to other types of strings is possible but idk about string to other types of strings)
+// TODO: Add a split function
+// TODO: Add substrings and find functions (in progress)
 // TODO: Vectorize some parts of the codebase
 // TODO: UTF-8, UTF-16, UTF-32
-// TODO: Fix bugs duh
+// TODO: benchmark against std::string
+// TODO: Fix bugs duh (I am aware of a million bugs related to memory just give me time >:( I am just trying to get basic library working)
+// TODO: Test cases and valgrind checks
 // TODO: Documentation and making sure to do that and not be lazy
 
 
 namespace strings {
+    class str;
     // Mutable string type
     template<typename T = std::uint64_t> // In this instance the struct size becomes 24 bytes instead of 16 but user can
     // decrease the size for performance
@@ -100,8 +102,33 @@ namespace strings {
             return 0;
         }
 
-        template<typename U>
+        [[nodiscard]] std::int64_t compare(const char* other) const noexcept {
+            T min_len;
+            T len1;
+            std::uint64_t len2 = std::strlen(other);
+            char *str1;
+            get_len_and_data(this, len1, str1);
+            if (len1 < len2) {
+                min_len = len1;
+            } else {
+                min_len = len2;
+            }
+            const int cmp = std::memcmp(str1, other, min_len);
+            if (cmp != 0) {
+                return cmp;
+            }
+            if (len1 < len2) {
+                return -1;
+            }
+            if (len1 > len2) {
+                return 1;
+            }
+            return 0;
+        }
+
+        [[nodiscard]] std::int64_t compare(const str &other) const noexcept;
         friend class str;
+
 
     public:
         string() : string_small{} {
@@ -599,20 +626,15 @@ namespace strings {
             }
         }
     };
-#if _MSVC_LANG >= 201703L
-    string(const char *) -> string<std::uint32_t>;
-#elif __cplusplus >= 201703L
-    string(const char *) -> string<std::uint32_t>;
-#endif
+    string(const char *) -> string<>;
 
     // Immutable string type (functionally same as &str from Rust and std::string_view from libg++)
-    template<typename T = std::uint64_t>
     class str {
         const char *str_;
-        T size_;
-
-        std::int64_t compare(const str &other) const noexcept {
-            T min_len;
+        std::uint64_t size_;
+        friend class string<>;
+        [[nodiscard]] std::int64_t compare(const str &other) const noexcept {
+            std::uint64_t min_len;
             if (size_ < other.size_) {
                 min_len = size_;
             } else {
@@ -631,8 +653,8 @@ namespace strings {
             return 0;
         }
         
-        std::int64_t compare(const string<> &other) const noexcept {
-            T min_len;
+        [[nodiscard]] std::int64_t compare(const string<> &other) const noexcept {
+            std::uint64_t min_len;
             if (other.is_short()) {
                 if (size_ < other.string_small.size) {
                     min_len = size_;
@@ -671,7 +693,7 @@ namespace strings {
         }
 
         std::int64_t compare(const char* other) const noexcept {
-            T min_len;
+            std::uint64_t min_len;
             std::uint64_t csize = std::strlen(other);
             if (size_ < csize) {
                 min_len = size_;
@@ -718,12 +740,12 @@ namespace strings {
             return str_;
         }
 
-        constexpr T size() const noexcept {
+        [[nodiscard]] constexpr std::uint64_t size() const noexcept {
             return size_;
         }
 
         friend std::ostream &operator<<(std::ostream &out, const str &s) {
-            out.write(s.str_, s.size_);
+            out.write(s.str_, static_cast<std::int32_t>(s.size_));
             return out;
         }
 
@@ -803,7 +825,7 @@ namespace strings {
             return compare(other) >= 0;
         }
 
-        constexpr char operator[](T index) const noexcept {
+        constexpr char operator[](const std::uint64_t index) const noexcept {
             return *(str_ + index);
         }
 
@@ -815,11 +837,31 @@ namespace strings {
             return str_ + size_;
         }
     };
-#if _MSVC_LANG >= 201703L
-    str(const char *) -> str<std::uint64_t>;
-#elif __cplusplus >= 201703L
-    str(const char *) -> str<std::uint64_t>;
-#endif
+
+
+    template<>
+    inline std::int64_t string<>::compare(const str &other) const noexcept {
+        std::uint64_t min_len;
+        std::uint64_t len1;
+        const char *str1;
+        get_len_and_data(*this, len1, str1);
+        if (len1 < other.size_) {
+            min_len = len1;
+        } else {
+            min_len = other.size_;
+        }
+        const int cmp = std::memcmp(str1, other.str_, min_len);
+        if (cmp != 0) {
+            return cmp;
+        }
+        if (len1 < other.size_) {
+            return -1;
+        }
+        if (len1 > other.size_) {
+            return 1;
+        }
+        return 0;
+    }
 }
 
 #endif
