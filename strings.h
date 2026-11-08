@@ -20,13 +20,13 @@
 
 namespace strings {
     class str;
+
     // Mutable string type
     template<typename T = std::uint64_t> // In this instance the struct size becomes 24 bytes instead of 16 but user can
     // decrease the size for performance
     class string {
         static constexpr T SIZE_SSO = sizeof(T) + sizeof(T) + sizeof(char *);
         static constexpr T SIZE_T_MAX = ~(T(1) << (sizeof(T) * 8 - 1));
-        static constexpr std::uint64_t npos = static_cast<std::size_t>(-1);
 
         union {
             struct {
@@ -102,7 +102,7 @@ namespace strings {
             return 0;
         }
 
-        [[nodiscard]] std::int64_t compare(const char* other) const noexcept {
+        [[nodiscard]] std::int64_t compare(const char *other) const noexcept {
             T min_len;
             T len1;
             std::uint64_t len2 = std::strlen(other);
@@ -127,8 +127,8 @@ namespace strings {
         }
 
         [[nodiscard]] std::int64_t compare(const str &other) const noexcept;
-        friend class str;
 
+        friend class str;
 
     public:
         string() : string_small{} {
@@ -410,57 +410,53 @@ namespace strings {
         }
 
         // under progress, could be very buggy and slow, vectorization could help a lot in this
-        std::uint64_t find(std::optional<string> &sub = std::nullopt, std::optional<const char *> cstr = std::nullopt,
-                           std::optional<std::uint64_t> pos = std::nullopt,
-                           std::optional<std::uint64_t> index = std::nullopt) {
+        std::optional<std::uint64_t> find(const string &sub) {
             bool is_found = true;
-            if (sub) {
-                if (this->is_short()) {
-                    if (sub->is_short()) {
-                    } else {
-                        if (sub->size() > this->size()) {
-                            return npos;
-                        }
-                    }
+            if (this->is_short()) {
+                if (sub->is_short()) {
                 } else {
-                    if (sub->is_short()) {
-                        std::size_t i = 0;
-                        while (this->string_.string[i] != nullptr) {
-                            if (this->string_.string[i] == sub->string_small.string[0]) {
-                                std::size_t j = i;
-                                while (sub->string_small.string[j] != nullptr) {
-                                    if (this->string_.string[j] != sub->string_small.string[j]) {
-                                        is_found = false;
-                                        break;
-                                    }
-                                    j++;
-                                }
-                            }
-                            i++;
-                        }
-                        if (is_found) {
-                            return i;
-                        }
-                        return npos;
-                    } else {
-                        std::size_t i = 0;
-                        while (this->string_.string[i] != nullptr) {
-                            if (this->string_.string[i] == sub->string_.string[0]) {
-                                std::size_t j = i;
-                                while (sub->string_.string[j] != nullptr) {
-                                    if (this->string_.string[j] != sub->string_.string[j]) {
-                                        is_found = false;
-                                        break;
-                                    }
-                                    j++;
-                                }
-                            }
-                        }
-                        if (is_found) {
-                            return i;
-                        }
-                        return npos;
+                    if (sub->size() > this->size()) {
+                        return std::nullopt;
                     }
+                }
+            } else {
+                if (sub->is_short()) {
+                    std::size_t i = 0;
+                    while (this->string_.string[i] != nullptr) {
+                        if (this->string_.string[i] == sub->string_small.string[0]) {
+                            std::size_t j = i;
+                            while (sub->string_small.string[j] != nullptr) {
+                                if (this->string_.string[j] != sub->string_small.string[j]) {
+                                    is_found = false;
+                                    break;
+                                }
+                                j++;
+                            }
+                        }
+                        i++;
+                    }
+                    if (is_found) {
+                        return i;
+                    }
+                    return std::nullopt;
+                } else {
+                    std::size_t i = 0;
+                    while (this->string_.string[i] != nullptr) {
+                        if (this->string_.string[i] == sub->string_.string[0]) {
+                            std::size_t j = i;
+                            while (sub->string_.string[j] != nullptr) {
+                                if (this->string_.string[j] != sub->string_.string[j]) {
+                                    is_found = false;
+                                    break;
+                                }
+                                j++;
+                            }
+                        }
+                    }
+                    if (is_found) {
+                        return i;
+                    }
+                    return std::nullopt;
                 }
             }
         }
@@ -626,6 +622,7 @@ namespace strings {
             }
         }
     };
+
     string(const char *) -> string<>;
 
     // Immutable string type (functionally same as &str from Rust and std::string_view from libg++)
@@ -633,6 +630,7 @@ namespace strings {
         const char *str_;
         std::uint64_t size_;
         friend class string<>;
+
         [[nodiscard]] std::int64_t compare(const str &other) const noexcept {
             std::uint64_t min_len;
             if (size_ < other.size_) {
@@ -652,7 +650,7 @@ namespace strings {
             }
             return 0;
         }
-        
+
         [[nodiscard]] std::int64_t compare(const string<> &other) const noexcept {
             std::uint64_t min_len;
             if (other.is_short()) {
@@ -692,7 +690,7 @@ namespace strings {
             }
         }
 
-        std::int64_t compare(const char* other) const noexcept {
+        std::int64_t compare(const char *other) const noexcept {
             std::uint64_t min_len;
             std::uint64_t csize = std::strlen(other);
             if (size_ < csize) {
@@ -775,7 +773,8 @@ namespace strings {
 
         bool operator==(const string<> &other) const noexcept {
             if (other.is_short()) {
-                return size_ == (other.string_small.size & 0x7F) && std::memcmp(str_, other.string_small.string, size_) == 0;
+                return size_ == (other.string_small.size & 0x7F) && std::memcmp(str_, other.string_small.string, size_)
+                       == 0;
             } else {
                 return size_ == other.string_.size && std::memcmp(str_, other.string_.string, size_) == 0;
             }
@@ -801,27 +800,27 @@ namespace strings {
             return compare(other) >= 0;
         }
 
-        bool operator==(const char* other) const noexcept {
+        bool operator==(const char *other) const noexcept {
             return size_ == std::strlen(other) && std::memcmp(str_, other, size_) == 0;
         }
 
-        bool operator!=(const char* other) const noexcept {
+        bool operator!=(const char *other) const noexcept {
             return !(*this == other);
         }
 
-        bool operator<(const char* other) const noexcept {
+        bool operator<(const char *other) const noexcept {
             return compare(other) < 0;
         }
 
-        bool operator>(const char* other) const noexcept {
+        bool operator>(const char *other) const noexcept {
             return compare(other) > 0;
         }
 
-        bool operator<=(const char* other) const noexcept {
+        bool operator<=(const char *other) const noexcept {
             return compare(other) <= 0;
         }
 
-        bool operator>=(const char* other) const noexcept {
+        bool operator>=(const char *other) const noexcept {
             return compare(other) >= 0;
         }
 
