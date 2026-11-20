@@ -6,6 +6,7 @@
 #include <ostream>
 #include <istream>
 #include <optional>
+#include <immintrin.h>
 
 
 // TODO: Add a split function
@@ -410,23 +411,72 @@ namespace strings {
         }
 
         // under progress, could be very buggy and slow, vectorization could help a lot in this
+        [[nodiscard("[strings] You must check the return value since the function returns std::nullopt if it fails to find the substring")]]
         std::optional<std::uint64_t> find(const string &sub) {
+// AVX2/AVX512 gate wouldn't make sense here and it would cause repetition, so a generic SSE branch should be fine for SSO strings
+// in case of both being SSO and "this" being SSO and sub being heap due to me allowing forced arbitrary heap allocation
+// for strings so if the size of sub isn't greater than "this"'s size then I will have to so the same thing as both SSO but with heap overhead
+#if defined(__SSE2__)
             bool is_found = true;
             if (this->is_short()) {
-                if (sub->is_short()) {
+                if (sub.is_short()) {
+                    if (sub.size() > this->size()) {
+                        return std::nullopt;
+                    }
+                    // So I will need to check if the size >= 16 and use SSE and potentially make a separate tail loop to iterate
+                    if (this->size() >= 16) {
+                        // NOW I will first check index 0 of sub with 16 bytes of SSO string, if found then we first check sub's size and check 1-6 elements
+                        // for last index of sub and if not found then we SHIFT to index 7-22 to find the last index of sub within that SSO string
+                        // THEN we subtract from last index where the last index of sub was found with the first index and compare if the size of sub <= the current string
+                        // If sub is bigger then the portion is not valid and go back to first step otherwise we do more comparisons to find if it's the substr or not
+                        // otherwise step 1 or well if we reach the end of string then tough shit the substr isn't there and it will return std::nullopt
+                    }
+                    std::size_t i = 0;
+                    while (this->string_small.string[i] != '\0') {
+                        if (this->string_small.string[i] == sub.string_small.string[0]) {
+                            std::size_t j = i;
+                            while (sub.string_small.string[j] != '\0') {
+                                if (this->string_small.string[j] != sub.string_small.string[j]) {
+                                    is_found = false;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+#else
+            bool is_found = true;
+            if (this->is_short()) {
+                if (sub.is_short()) {
+                    if (sub.size() > this->size()) {
+                        return std::nullopt;
+                    }
+                std::size_t i = 0;
+                    while (this->string_small.string[i] != '\0') {
+                        if (this->string_small.string[i] == sub.string_small.string[0]) {
+                            std::size_t j = i;
+                            while (sub.string_small.string[j] != '\0') {
+                                if (this->string_small.string[j] != sub.string_small.string[j]) {
+                                    is_found = false;
+                                    break;
+                                }
+                            }
+                        }
+                    }
                 } else {
-                    if (sub->size() > this->size()) {
+                    if (sub.size() > this->size()) {
                         return std::nullopt;
                     }
                 }
             } else {
-                if (sub->is_short()) {
+                if (sub.is_short()) {
                     std::size_t i = 0;
-                    while (this->string_.string[i] != nullptr) {
-                        if (this->string_.string[i] == sub->string_small.string[0]) {
+                    while (this->string_.string[i] != '\0') {
+                        if (this->string_.string[i] == sub.string_small.string[0]) {
                             std::size_t j = i;
-                            while (sub->string_small.string[j] != nullptr) {
-                                if (this->string_.string[j] != sub->string_small.string[j]) {
+                            while (sub.string_small.string[j] != '\0') {
+                                if (this->string_.string[j] != sub.string_small.string[j]) {
                                     is_found = false;
                                     break;
                                 }
@@ -441,11 +491,11 @@ namespace strings {
                     return std::nullopt;
                 } else {
                     std::size_t i = 0;
-                    while (this->string_.string[i] != nullptr) {
-                        if (this->string_.string[i] == sub->string_.string[0]) {
+                    while (this->string_.string[i] != '\0') {
+                        if (this->string_.string[i] == sub.string_.string[0]) {
                             std::size_t j = i;
-                            while (sub->string_.string[j] != nullptr) {
-                                if (this->string_.string[j] != sub->string_.string[j]) {
+                            while (sub.string_.string[j] != '\0') {
+                                if (this->string_.string[j] != sub.string_.string[j]) {
                                     is_found = false;
                                     break;
                                 }
@@ -459,7 +509,10 @@ namespace strings {
                     return std::nullopt;
                 }
             }
+            return std::nullopt;
+#endif
         }
+
 
         void reserve(std::uint64_t bytes) {
             T len;
